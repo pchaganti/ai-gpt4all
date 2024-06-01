@@ -1,10 +1,13 @@
 #include "llmodel.h"
 
+#include "dlhandle.h"
+
 #include <cassert>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <regex>
@@ -12,9 +15,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include "dlhandle.h"
-#include "sysinfo.h"
 
 #ifdef _WIN32
 #   define WIN32_LEAN_AND_MEAN
@@ -26,6 +26,10 @@
 
 #ifdef _MSC_VER
 #   include <intrin.h>
+#endif
+
+#if defined(__APPLE__) && defined(__aarch64__)
+#   include "sysinfo.h" // for getSystemTotalRAMInBytes
 #endif
 
 namespace fs = std::filesystem;
@@ -141,12 +145,18 @@ const std::vector<LLModel::Implementation> &LLModel::Implementation::implementat
                     if (!std::regex_search(p.stem().string(), re)) continue;
 
                     // Add to list if model implementation
+                    Dlhandle dl;
                     try {
-                        Dlhandle dl(p);
-                        if (!isImplementation(dl))
-                            continue;
-                        fres.emplace_back(Implementation(std::move(dl)));
-                    } catch (...) {}
+                        dl = Dlhandle(p);
+                    } catch (const Dlhandle::Exception &e) {
+                        std::cerr << "Failed to load " << p.filename().string() << ": " << e.what() << "\n";
+                        continue;
+                    }
+                    if (!isImplementation(dl)) {
+                        std::cerr << "Not an implementation: " << p.filename().string() << "\n";
+                        continue;
+                    }
+                    fres.emplace_back(Implementation(std::move(dl)));
                 }
             }
         };
